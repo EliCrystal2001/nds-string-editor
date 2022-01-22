@@ -4,12 +4,22 @@ import json
 import struct
 import hashlib
 import random
+import sys
 #import ndspy.rom
 #import ndspy.code
 
 ROM_NAME = "DSCDP_CRUJN6_00"
+IGNORE_MD5 = False
+
+if len(sys.argv) >= 1:
+	ROM_NAME = sys.argv[1]
+	ROM_NAME = ROM_NAME.replace(".nds", "")
+	ROM_NAME = ROM_NAME.replace(".NDS", "")
+	
 rom_data = bytearray(open(ROM_NAME+".nds", "rb").read())
 sections = []
+
+relocated_text = []
 
 def find_all(data, to_find):
 	addresses = []
@@ -101,28 +111,47 @@ def apply_mods(section):
 			old_blen = string["blen"]
 			rom_addr = string["rom_address"]
 			mem_addr = string["memory_address"]
-			md5_hash = string["md5"]
 			xrefs = string["xrefs"]
 			
 			og_bytes = rom_data[rom_addr:rom_addr+old_blen]
-			hstr = hashlib.md5(og_bytes).hexdigest()[:8]
 			
-			if not hstr == md5_hash:
-				print(old_text + " MD5 Mismatch, NOT CHANGED!")
-				continue
+			if not IGNORE_MD5:
+				md5_hash = string["md5"]
+				hstr = hashlib.md5(og_bytes).hexdigest()[:8]
+				
+				if not hstr == md5_hash:
+					print(old_text + " MD5 Mismatch, NOT CHANGED!")
+					continue
 			
 			text_sjis = new_text.encode("SHIFT_JIS")
 			new_blen = len(text_sjis)+1
-			print("Changing: "+old_text+" to "+new_text)
 			if new_blen <= old_blen:
-				print(new_text + " is smaller than "+ old_text+". changing in-place")
+				print(new_text.replace("\n", "\\n") + " is smaller than "+ old_text.replace("\n", "\\n")+". changing in-place")
 				strcpy(text_sjis, rom_data, rom_addr)
 			else:
-				print(new_text + " is larger than "+old_text+" reallocating")
-				print("Locating new area for text")
-				new_file_addr, new_mem_addr = find_free_area(section, new_blen)
-				print("Found : "+hex(new_file_addr)+", "+hex(new_mem_addr))
-				strcpy(text_sjis, rom_data, new_file_addr)
+				print(new_text.replace("\n", "\\n") + " is larger than "+old_text.replace("\n", "\\n")+" relocating!")
+				print("Locating new area for text .. ", end="", flush=True)
+
+				# check if we've used this text before
+				md5 = hashlib.md5(text_sjis).hexdigest()
+				
+				new_file_addr = None
+				new_mem_addr = None
+				for txt in relocated_text:
+					if txt["hash"] == md5:
+						new_file_addr = txt["file_addr"]
+						new_mem_addr = txt["mem_addr"]
+						break
+				
+				if new_mem_addr == None and new_file_addr == None:
+					new_file_addr, new_mem_addr = find_free_area(section, new_blen)
+					strcpy(text_sjis, rom_data, new_file_addr)				
+					relocated_text.append({"hash":md5, "file_addr": new_file_addr, "mem_addr": new_mem_addr})
+					
+					print("Found New : "+hex(new_file_addr)+", "+hex(new_mem_addr))
+				else:
+					print("Reusing : "+hex(new_file_addr)+", "+hex(new_mem_addr))
+					
 				for xref in xrefs:
 					old_addr = struct.unpack("I", rom_data[xref:xref+4])[0]
 					if not old_addr == mem_addr:
@@ -135,6 +164,7 @@ def read_jsons(jsonname):
 	json_list = json.loads(open(jsonname, "rb").read())	
 	for json_name in json_list:
 		sections.append(json.loads(open(json_name, "rb").read()))
+
 
 
 read_jsons(ROM_NAME + ".json")
