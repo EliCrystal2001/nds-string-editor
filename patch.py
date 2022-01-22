@@ -133,7 +133,7 @@ def apply_mods(section):
 				print("Locating new area for text .. ", end="", flush=True)
 
 				# check if we've used this text before
-				md5 = hashlib.md5(text_sjis).hexdigest()
+				md5 = hashlib.md5(text_sjis).digest()
 				
 				new_file_addr = None
 				new_mem_addr = None
