@@ -8,10 +8,9 @@ import sys
 #import ndspy.rom
 #import ndspy.code
 
-ROM_NAME = "DSCDP_CRUJN6_00"
-IGNORE_MD5 = False
+from config import *
 
-if len(sys.argv) >= 1:
+if len(sys.argv) >= 2:
 	ROM_NAME = sys.argv[1]
 	ROM_NAME = ROM_NAME.replace(".nds", "")
 	ROM_NAME = ROM_NAME.replace(".NDS", "")
@@ -123,7 +122,7 @@ def apply_mods(section):
 					print(old_text + " MD5 Mismatch, NOT CHANGED!")
 					continue
 			
-			text_sjis = new_text.encode("SHIFT_JIS")
+			text_sjis = bytes(new_text, "SHIFT_JIS")
 			new_blen = len(text_sjis)+1
 			if new_blen <= old_blen:
 				print(new_text.replace("\n", "\\n") + " is smaller than "+ old_text.replace("\n", "\\n")+". changing in-place")
@@ -133,20 +132,21 @@ def apply_mods(section):
 				print("Locating new area for text .. ", end="", flush=True)
 
 				# check if we've used this text before
-				md5 = hashlib.md5(text_sjis).digest()
 				
 				new_file_addr = None
 				new_mem_addr = None
-				for txt in relocated_text:
-					if txt["hash"] == md5:
-						new_file_addr = txt["file_addr"]
-						new_mem_addr = txt["mem_addr"]
+				for rloc_txt in relocated_text:
+					if  rloc_txt["txt"].endswith(text_sjis): # im pretty proud of this tbh
+						missing = len(rloc_txt["txt"]) - len(text_sjis)
+						new_file_addr = (rloc_txt["file_addr"] + missing)
+						new_mem_addr = (rloc_txt["mem_addr"] + missing)
 						break
+				
 				
 				if new_mem_addr == None and new_file_addr == None:
 					new_file_addr, new_mem_addr = find_free_area(section, new_blen)
 					strcpy(text_sjis, rom_data, new_file_addr)				
-					relocated_text.append({"hash":md5, "file_addr": new_file_addr, "mem_addr": new_mem_addr})
+					relocated_text.append({"txt":text_sjis, "file_addr": new_file_addr, "mem_addr": new_mem_addr})
 					
 					print("Found New : "+hex(new_file_addr)+", "+hex(new_mem_addr))
 				else:
